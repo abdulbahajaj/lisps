@@ -5,7 +5,6 @@
 
 (declare beval)
 
-
 ;; Resuming from conts
 (defmulti resume (fn [cont & _] (:type cont)))
 (defmethod resume :default [cont cond-val] (wrong "Unknown cont"))
@@ -25,8 +24,6 @@
 (defn eval-quote [exp env cont]
   (resume cont exp))
 
-(defn eval-app [exp env cont])
-
 ;; 3.2.4 Alternatives
 (defn eval-if [cond true-body false-body env cont]
   (beval cond env {:type ::if-cont
@@ -43,7 +40,7 @@
 ;; Sequence 3.2.5
 (defn eval-begin [exp env cont]
   (if (atom? exp)
-    (resume cont nil)
+    (resume cont '())
     (if (> (count exp) 1)
       (beval (first exp) env {:type ::begin-cont
                               :parent cont
@@ -70,7 +67,7 @@
 
 (defmethod lookup ::variable-env [env symbol cont]
   (if (= symbol (:name env))
-    (resume cont (:val env))
+    (resume cont (:value env)) 
     (lookup (:others env) symbol cont)))
 
 (defn eval-var [exp env cont]
@@ -78,8 +75,6 @@
 
 (defn eval-set! [symbol exp env cont]
   (beval exp env {:type ::set!-cont :parent cont :env env :symbol symbol}))
-
-
 
 (defmulti update! (fn [env & _] (:type env)))
 (defmethod update! :default [env symbol cont value](wrong "Not an env"))
@@ -106,7 +101,8 @@
          :others (extend-env env (rest args) (rest values))
          :name (first args)
          :value (first values)}
-        (and (null? args) (null? values)) env
+
+        (and (= (count args) (count values) 0)) env
 
         (= (count args) (count values) 1)
         {:type ::variable-env
@@ -130,10 +126,8 @@
                        :env env
                        :arg-values arg-values}))
 
-
-
 (defn eval-args [arg-values env cont]
-  (if (pair? arg-values)
+  (if (> (count arg-values) 0)
     (beval (first arg-values) env {:type ::argument-cont
                                     :parent cont
                                     :arg-values (rest arg-values)
@@ -159,16 +153,13 @@
   (resume (:parent cont) (cons (:val cont) values)))
 
 (defmulti invoke (fn [callable & _] (:type callable)))
-
 (defmethod invoke :default [] (wrong "Not a function"))
-
 (defmethod invoke ::function [func vars env cont]
   (let [env (extend-env (:env func) (:args func) vars)]
     (eval-begin (:body func) env cont)))
 
 (defmethod resume ::apply-cont [cont values]
   (invoke (:func cont) values (:env cont) (:parent cont)))
-
 
 ;; 3.2.2 Evaluate
 (defn beval [exp env cont]
@@ -185,16 +176,14 @@
       (eval-app (first exp) (rest exp) env cont))))
 
 ;; 3.3 Initializing the interpreter
-
 (defmethod resume ::bottom-cont [cont v]
   (println v))
 
 (defn brepl [& rest]
-  (loop [exp (read)
-         env {:type ::null-env}
+  (loop [env {:type ::null-env}
          cont {:type ::bottom-cont}]
     (println "\n----\n")
-    (beval exp env cont)
-    (recur (read) env cont)))
+    (beval (read) env cont)
+    (recur env cont)))
 
 (brepl)
