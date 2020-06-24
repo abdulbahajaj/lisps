@@ -1,4 +1,4 @@
-(ns brutus.cont-interpreter)
+(ns lisps.cont-interpreter)
 
 (defn wrong [err-message]
   (throw (RuntimeException. err-message)))
