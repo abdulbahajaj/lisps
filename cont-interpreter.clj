@@ -162,28 +162,55 @@
       lambda (eval-lambda (second exp) (-> exp rest rest) env cont)
       (eval-app (first exp) (rest exp) env cont))))
 
+;; 3.4.1 Implementing call/cc
+(defn call-cc [vars env cont]
+  (if (= (count vars) 1)
+    (invoke (first vars) (list cont) env cont)
+    (wrong "Incorrect argument")))
+
+(doall
+ (map #(derive % ::continuation) [::root-cont
+                                 ::gather-cont
+                                 ::argument-cont
+                                 ::apply-cont
+                                 ::set!-cont
+                                 ::if-cont
+                                 ::begin-cont
+                                 ::evfun-cont
+                                 ::apply-cont]))
+
+(defmethod invoke ::continuation [cont vars env _]
+  (if (= 1 (count vars))
+    (resume cont (first vars))
+    (wrong "Continuation expect one argument")))
+
 ;; 3.3 Initializing the interpreter
 (defmethod resume ::bottom-cont [cont v]
   ((:func cont) v))
 
-(defn def-primitive [env symbol primitive]
+
+(defn def-primitive [env symbol primitive & conf]
   (extend-env env
               (list symbol)
               (list {:type ::primitive
-                     :val primitive})))
+                     :val (if (and conf (:resume (first conf)))
+                            #(resume %3 (primitive %1 %2 %3)) 
+                            primitive)})))
 
 (defmethod invoke ::primitive [func vars env cont]
-  (resume cont (apply (:val func) vars env cont)))
+  ((:val func) vars env cont))
 
 (defn get-initial-env []
-  (reduce #(def-primitive %1 (first %2) (second %2))
+  (reduce #(apply def-primitive (cons %1 %2) )
           {:type ::null-env}
-          [['+ (fn [vals & _] (apply + vals))]
-           ['- (fn [vals & _] (apply - vals))]]))
+          [['+ (fn [vals & _] (apply + vals)) {:resume true}]
+           ['- (fn [vals & _] (apply - vals)) {:resume true}]
+           ['call/cc call-cc]]))
 
 (defn get-initial-cont []
   {:type ::bottom-cont :func println})
 
+;; Interacting with interpreter
 (defn run-once []
   (beval '(+ 1 2 3 4) (get-initial-env) (get-initial-cont)))
 
