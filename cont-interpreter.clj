@@ -54,8 +54,6 @@
               (:parent cont)))
 
 ;; 3.2.6 Variable Environment
-
-
 (defmulti lookup (fn [env & _] (:type env)))
 (defmethod lookup :default [env symbol cont] (wrong "Not an env"))
 
@@ -96,26 +94,15 @@
 
 ;; 3.2.7 Functions
 (defn extend-env [env args values]
-  (cond (and (pair? args) (pair? values))
-        {:type ::variable-env
-         :others (extend-env env (rest args) (rest values))
-         :name (first args)
-         :value (first values)}
+  (cond
+    (and (> (count args)) (> (count values) 0))
+    {:type ::variable-env
+     :others (extend-env env (rest args) (rest values))
+     :name (first args)
+     :value (first values)}
 
-        (and (= (count args) (count values) 0)) env
-
-        (= (count args) (count values) 1)
-        {:type ::variable-env
-         :others env
-         :name (first args)
-         :value (first values)}
-
-        (symbol? args) {:type ::variable-env
-                         :others env
-                         :name args
-                         :value values}
-
-        :else (wrong "Wrong arity")))
+    (and (= (count args) (count values) 0)) env
+    :else (wrong "Wrong arity")))
 
 (defn eval-lambda [args exp env cont]
   (resume cont {:type ::function :args args :body exp :env env}))
@@ -143,7 +130,7 @@
               :env (:env cont)}))
 
 (defmethod resume ::argument-cont [cont v]
-  (eval-args (rest (:arg-values cont))
+  (eval-args (:arg-values cont)
              (:env cont)
              {:type ::gather-cont
               :parent (:parent cont)
@@ -153,7 +140,7 @@
   (resume (:parent cont) (cons (:val cont) values)))
 
 (defmulti invoke (fn [callable & _] (:type callable)))
-(defmethod invoke :default [] (wrong "Not a function"))
+(defmethod invoke :default [& _] (wrong "Not a function"))
 (defmethod invoke ::function [func vars env cont]
   (let [env (extend-env (:env func) (:args func) vars)]
     (eval-begin (:body func) env cont)))
@@ -177,11 +164,32 @@
 
 ;; 3.3 Initializing the interpreter
 (defmethod resume ::bottom-cont [cont v]
-  (println v))
+  ((:func cont) v))
+
+(defn def-primitive [env symbol primitive]
+  (extend-env env
+              (list symbol)
+              (list {:type ::primitive
+                     :val primitive})))
+
+(defmethod invoke ::primitive [func vars env cont]
+  (resume cont (apply (:val func) vars env cont)))
+
+(defn get-initial-env []
+  (reduce #(def-primitive %1 (first %2) (second %2))
+          {:type ::null-env}
+          [['+ (fn [vals & _] (apply + vals))]
+           ['- (fn [vals & _] (apply - vals))]]))
+
+(defn get-initial-cont []
+  {:type ::bottom-cont :func println})
+
+(defn run-once []
+  (beval '(+ 1 2 3 4) (get-initial-env) (get-initial-cont)))
 
 (defn brepl [& rest]
-  (loop [env {:type ::null-env}
-         cont {:type ::bottom-cont}]
+  (loop [env (get-initial-env)
+         cont (get-initial-cont)]
     (println "\n----\n")
     (beval (read) env cont)
     (recur env cont)))
